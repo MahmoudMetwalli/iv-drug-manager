@@ -54,6 +54,16 @@ export default function EditPatientModal({
     }
   }, [patient]);
 
+  // Lock body scroll when modal is open
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = "hidden";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [isOpen]);
+
   if (!isOpen || !patient) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {

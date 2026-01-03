@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { X, Loader2, Sun, Biohazard } from "lucide-react";
 
 interface Drug {
@@ -105,6 +105,16 @@ export default function DrugFormModal({
       setFormData(emptyDrug);
     }
   }, [drug, isOpen]);
+
+  // Lock body scroll when modal is open
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = "hidden";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
