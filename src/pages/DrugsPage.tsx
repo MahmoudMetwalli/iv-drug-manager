@@ -51,7 +51,7 @@ interface Drug {
 }
 
 export default function DrugsPage() {
-  const { user } = useAuth();
+  const { hasPermission } = useAuth();
   const [drugs, setDrugs] = useState<Drug[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
@@ -59,7 +59,7 @@ export default function DrugsPage() {
   const [showModal, setShowModal] = useState(false);
   const [editingDrug, setEditingDrug] = useState<Drug | null>(null);
 
-  const isAdmin = user?.role === "admin";
+  const canManageDrugs = hasPermission("manage_drugs");
 
   useEffect(() => {
     loadDrugs();
@@ -135,7 +135,7 @@ export default function DrugsPage() {
             <span className="font-bold text-blue-600">{drugs.length}</span>{" "}
             drugs
           </span>
-          {isAdmin && (
+          {canManageDrugs && (
             <button
               onClick={() => {
                 setEditingDrug(null);
@@ -249,7 +249,7 @@ export default function DrugsPage() {
               </div>
 
               {/* Card Footer */}
-              {isAdmin && (
+              {canManageDrugs && (
                 <div className="border-t p-2 flex justify-end gap-2 bg-gray-50">
                   <button
                     onClick={() => {

@@ -7,12 +7,18 @@ export function setupIpc() {
   // ============= AUTH =============
   ipcMain.handle("auth:login", (_, { username, password }) => {
     const user = db
-      .prepare("SELECT * FROM users WHERE username = ?")
+      .prepare("SELECT * FROM users WHERE username = ? AND is_active = 1")
       .get(username) as any;
     if (!user || user.password_hash !== password) {
       throw new Error("Invalid credentials");
     }
-    return { id: user.id, username: user.username, role: user.role };
+    return {
+      id: user.id,
+      username: user.username,
+      displayName: user.display_name,
+      role: user.role,
+      permissions: JSON.parse(user.permissions || "[]"),
+    };
   });
 
   // ============= PATIENTS =============
@@ -206,5 +212,138 @@ export function setupIpc() {
   ipcMain.handle("drug:delete", (_, id) => {
     db.prepare("DELETE FROM drugs WHERE id = ?").run(id);
     return { success: true };
+  });
+
+  // ============= USERS =============
+  ipcMain.handle("user:list", () => {
+    const users = db
+      .prepare(
+        `
+      SELECT id, username, display_name, role, permissions, is_active, created_at
+      FROM users ORDER BY created_at DESC
+    `
+      )
+      .all() as any[];
+    return users.map((u) => ({
+      ...u,
+      permissions: JSON.parse(u.permissions || "[]"),
+    }));
+  });
+
+  ipcMain.handle("user:create", (_, user) => {
+    const stmt = db.prepare(`
+      INSERT INTO users (username, password_hash, display_name, role, permissions, is_active)
+      VALUES (@username, @password, @display_name, @role, @permissions, 1)
+    `);
+    const info = stmt.run({
+      username: user.username,
+      password: user.password,
+      display_name: user.display_name,
+      role: user.role,
+      permissions: JSON.stringify(user.permissions || []),
+    });
+    return { id: info.lastInsertRowid, ...user };
+  });
+
+  ipcMain.handle("user:update", (_, user) => {
+    if (user.password) {
+      // Update with password change
+      db.prepare(
+        `
+        UPDATE users SET
+          display_name = @display_name,
+          role = @role,
+          permissions = @permissions,
+          is_active = @is_active,
+          password_hash = @password,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = @id
+      `
+      ).run({
+        id: user.id,
+        display_name: user.display_name,
+        role: user.role,
+        permissions: JSON.stringify(user.permissions || []),
+        is_active: user.is_active ? 1 : 0,
+        password: user.password,
+      });
+    } else {
+      // Update without password change
+      db.prepare(
+        `
+        UPDATE users SET
+          display_name = @display_name,
+          role = @role,
+          permissions = @permissions,
+          is_active = @is_active,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = @id
+      `
+      ).run({
+        id: user.id,
+        display_name: user.display_name,
+        role: user.role,
+        permissions: JSON.stringify(user.permissions || []),
+        is_active: user.is_active ? 1 : 0,
+      });
+    }
+    return { success: true };
+  });
+
+  ipcMain.handle("user:delete", (_, id) => {
+    // Soft delete - just deactivate
+    db.prepare("UPDATE users SET is_active = 0 WHERE id = ?").run(id);
+    return { success: true };
+  });
+
+  // ============= AUDIT LOGS =============
+  ipcMain.handle(
+    "audit:log",
+    (_, { userId, username, action, entityType, entityId, details }) => {
+      db.prepare(
+        `
+      INSERT INTO audit_logs (user_id, username, action, entity_type, entity_id, details)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `
+      ).run(
+        userId,
+        username,
+        action,
+        entityType,
+        entityId,
+        JSON.stringify(details)
+      );
+      return { success: true };
+    }
+  );
+
+  ipcMain.handle("audit:list", (_, filters = {}) => {
+    let query = "SELECT * FROM audit_logs WHERE 1=1";
+    const params: any[] = [];
+
+    if (filters.userId) {
+      query += " AND user_id = ?";
+      params.push(filters.userId);
+    }
+    if (filters.action) {
+      query += " AND action = ?";
+      params.push(filters.action);
+    }
+    if (filters.entityType) {
+      query += " AND entity_type = ?";
+      params.push(filters.entityType);
+    }
+    if (filters.startDate) {
+      query += " AND timestamp >= ?";
+      params.push(filters.startDate);
+    }
+    if (filters.endDate) {
+      query += " AND timestamp <= ?";
+      params.push(filters.endDate);
+    }
+
+    query += " ORDER BY timestamp DESC LIMIT 500";
+
+    return db.prepare(query).all(...params);
   });
 }

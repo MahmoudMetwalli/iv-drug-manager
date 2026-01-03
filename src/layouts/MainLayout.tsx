@@ -1,9 +1,16 @@
 import { useAuth } from "../context/AuthContext";
 import { useNavigate, Link, Outlet, useLocation } from "react-router-dom";
-import { LogOut, User as UserIcon, Pill, Users } from "lucide-react";
+import {
+  LogOut,
+  User as UserIcon,
+  Pill,
+  Users,
+  Shield,
+  FileText,
+} from "lucide-react";
 
 export default function MainLayout() {
-  const { user, logout } = useAuth();
+  const { user, logout, hasPermission } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -28,7 +35,10 @@ export default function MainLayout() {
               <Link
                 to="/"
                 className={`px-3 py-2 rounded-md font-medium flex items-center gap-2 transition-colors ${
-                  isActiveLink("/") && !location.pathname.startsWith("/drugs")
+                  isActiveLink("/") &&
+                  !location.pathname.startsWith("/drugs") &&
+                  !location.pathname.startsWith("/users") &&
+                  !location.pathname.startsWith("/audit")
                     ? "bg-blue-100 text-blue-700"
                     : "text-gray-600 hover:text-blue-600 hover:bg-gray-100"
                 }`}
@@ -47,13 +57,39 @@ export default function MainLayout() {
                 <Pill className="w-4 h-4" />
                 Drugs
               </Link>
+              {hasPermission("manage_users") && (
+                <Link
+                  to="/users"
+                  className={`px-3 py-2 rounded-md font-medium flex items-center gap-2 transition-colors ${
+                    isActiveLink("/users")
+                      ? "bg-purple-100 text-purple-700"
+                      : "text-gray-600 hover:text-purple-600 hover:bg-gray-100"
+                  }`}
+                >
+                  <Shield className="w-4 h-4" />
+                  Users
+                </Link>
+              )}
+              {hasPermission("view_audit_logs") && (
+                <Link
+                  to="/audit-logs"
+                  className={`px-3 py-2 rounded-md font-medium flex items-center gap-2 transition-colors ${
+                    isActiveLink("/audit-logs")
+                      ? "bg-purple-100 text-purple-700"
+                      : "text-gray-600 hover:text-purple-600 hover:bg-gray-100"
+                  }`}
+                >
+                  <FileText className="w-4 h-4" />
+                  Audit Logs
+                </Link>
+              )}
             </nav>
           </div>
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2 text-sm">
               <UserIcon className="w-4 h-4 text-gray-500" />
               <span className="text-gray-700 font-medium">
-                {user?.username}
+                {user?.displayName || user?.username}
               </span>
               <span
                 className={`px-2 py-0.5 rounded text-xs font-bold ${

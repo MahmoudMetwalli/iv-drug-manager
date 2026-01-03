@@ -3,7 +3,9 @@ import { createContext, useContext, useState, ReactNode } from "react";
 interface User {
   id: number;
   username: string;
-  role: "admin" | "user";
+  displayName?: string;
+  role: "admin" | "pharmacist";
+  permissions: string[];
 }
 
 interface AuthContextType {
@@ -11,6 +13,7 @@ interface AuthContextType {
   login: (username: string, password: string) => Promise<void>;
   logout: () => void;
   isLoading: boolean;
+  hasPermission: (permission: string) => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -44,8 +47,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem("user");
   };
 
+  const hasPermission = (permission: string): boolean => {
+    if (!user) return false;
+    // Admin role has all permissions
+    if (user.role === "admin") return true;
+    return user.permissions?.includes(permission) ?? false;
+  };
+
   return (
-    <AuthContext.Provider value={{ user, login, logout, isLoading }}>
+    <AuthContext.Provider
+      value={{ user, login, logout, isLoading, hasPermission }}
+    >
       {children}
     </AuthContext.Provider>
   );

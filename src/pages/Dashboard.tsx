@@ -23,7 +23,7 @@ import EditPatientModal from "../components/EditPatientModal";
 import ImportPatientsModal from "../components/ImportPatientsModal";
 
 export default function Dashboard() {
-  const { user } = useAuth();
+  const { hasPermission } = useAuth();
   const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(false);
@@ -33,7 +33,7 @@ export default function Dashboard() {
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
 
-  const isAdmin = user?.role === "admin";
+  const canManagePatients = hasPermission("manage_patients");
 
   useEffect(() => {
     loadPatients();
@@ -91,7 +91,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {isAdmin && (
+        {canManagePatients && (
           <div className="flex items-center gap-2">
             <button
               onClick={() => setIsImportModalOpen(true)}
@@ -163,7 +163,7 @@ export default function Dashboard() {
                         >
                           V. Prep
                         </Link>
-                        {isAdmin && (
+                        {canManagePatients && (
                           <>
                             <button
                               onClick={() => handleEdit(patient)}

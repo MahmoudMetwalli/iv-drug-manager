@@ -5,6 +5,8 @@ import MainLayout from "./layouts/MainLayout";
 import Dashboard from "./pages/Dashboard";
 import PreparationWorksheet from "./pages/PreparationWorksheet";
 import DrugsPage from "./pages/DrugsPage";
+import UsersPage from "./pages/UsersPage";
+import AuditLogsPage from "./pages/AuditLogsPage";
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
@@ -28,6 +30,8 @@ function App() {
             <Route index element={<Dashboard />} />
             <Route path="prep/:patientId" element={<PreparationWorksheet />} />
             <Route path="drugs" element={<DrugsPage />} />
+            <Route path="users" element={<UsersPage />} />
+            <Route path="audit-logs" element={<AuditLogsPage />} />
           </Route>
         </Routes>
       </MemoryRouter>

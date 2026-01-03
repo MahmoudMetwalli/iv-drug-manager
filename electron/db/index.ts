@@ -29,8 +29,26 @@ export function initDb() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       username TEXT UNIQUE NOT NULL,
       password_hash TEXT NOT NULL,
+      display_name TEXT,
       role TEXT CHECK(role IN ('admin', 'pharmacist')) NOT NULL DEFAULT 'pharmacist',
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      permissions TEXT DEFAULT '[]',
+      is_active INTEGER DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  // Audit logs table
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS audit_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER,
+      username TEXT,
+      action TEXT NOT NULL,
+      entity_type TEXT NOT NULL,
+      entity_id INTEGER,
+      details TEXT,
+      timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
     );
   `);
 
@@ -39,12 +57,19 @@ export function initDb() {
     .prepare("SELECT * FROM users WHERE username = ?")
     .get("admin");
   if (!admin) {
-    // Default admin: admin / admin (In real app, hash this!)
+    // Default admin with all permissions
+    const allPermissions = JSON.stringify([
+      "manage_patients",
+      "manage_drugs",
+      "manage_preparations",
+      "manage_users",
+      "view_audit_logs",
+    ]);
     database
       .prepare(
-        "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)"
+        "INSERT INTO users (username, password_hash, display_name, role, permissions) VALUES (?, ?, ?, ?, ?)"
       )
-      .run("admin", "admin", "admin");
+      .run("admin", "admin", "Administrator", "admin", allPermissions);
   }
 
   // Patients table
@@ -188,7 +213,56 @@ function seedDrugs(database: Database.Database) {
 }
 
 function runMigrations(database: Database.Database) {
-  // Check if updated_at column exists in patients table
+  // Migration: Fix role CHECK constraint (old: 'admin','user' -> new: 'admin','pharmacist')
+  // Check if we need to migrate by looking at the table schema
+  const tableInfo = database
+    .prepare(
+      "SELECT sql FROM sqlite_master WHERE type='table' AND name='users'"
+    )
+    .get() as { sql: string } | undefined;
+  if (
+    tableInfo &&
+    tableInfo.sql &&
+    tableInfo.sql.includes("'user'") &&
+    !tableInfo.sql.includes("'pharmacist'")
+  ) {
+    console.log("Migration: Fixing role CHECK constraint in users table");
+
+    // Create new table with correct constraint
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS users_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        display_name TEXT,
+        role TEXT CHECK(role IN ('admin', 'pharmacist')) NOT NULL DEFAULT 'pharmacist',
+        permissions TEXT DEFAULT '[]',
+        is_active INTEGER DEFAULT 1,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // Copy data, converting 'user' role to 'pharmacist'
+    database.exec(`
+      INSERT INTO users_new (id, username, password_hash, display_name, role, permissions, is_active, created_at)
+      SELECT id, username, password_hash, 
+             COALESCE(display_name, username),
+             CASE WHEN role = 'user' THEN 'pharmacist' ELSE role END,
+             COALESCE(permissions, '[]'),
+             COALESCE(is_active, 1),
+             created_at
+      FROM users;
+    `);
+
+    // Drop old table and rename new one
+    database.exec("DROP TABLE users;");
+    database.exec("ALTER TABLE users_new RENAME TO users;");
+
+    console.log("Migration: Users table role constraint fixed");
+  }
+
+  // Migration: Add updated_at column to patients table
   const patientsColumns = database
     .prepare("PRAGMA table_info(patients)")
     .all() as Array<{ name: string }>;
@@ -197,5 +271,54 @@ function runMigrations(database: Database.Database) {
   if (!hasUpdatedAt && patientsColumns.length > 0) {
     console.log("Migration: Adding updated_at column to patients table");
     database.exec("ALTER TABLE patients ADD COLUMN updated_at DATETIME");
+  }
+
+  // Migration: Add new columns to users table (for fresh installs that might still need them)
+  const usersColumns = database
+    .prepare("PRAGMA table_info(users)")
+    .all() as Array<{ name: string }>;
+
+  if (
+    !usersColumns.some((col) => col.name === "permissions") &&
+    usersColumns.length > 0
+  ) {
+    console.log("Migration: Adding permissions column to users table");
+    database.exec("ALTER TABLE users ADD COLUMN permissions TEXT DEFAULT '[]'");
+  }
+
+  if (
+    !usersColumns.some((col) => col.name === "display_name") &&
+    usersColumns.length > 0
+  ) {
+    console.log("Migration: Adding display_name column to users table");
+    database.exec("ALTER TABLE users ADD COLUMN display_name TEXT");
+  }
+
+  if (
+    !usersColumns.some((col) => col.name === "is_active") &&
+    usersColumns.length > 0
+  ) {
+    console.log("Migration: Adding is_active column to users table");
+    database.exec("ALTER TABLE users ADD COLUMN is_active INTEGER DEFAULT 1");
+  }
+
+  // Update existing admin user with all permissions if they don't have any
+  const admin = database
+    .prepare("SELECT * FROM users WHERE username = 'admin'")
+    .get() as any;
+  if (admin && (!admin.permissions || admin.permissions === "[]")) {
+    const allPermissions = JSON.stringify([
+      "manage_patients",
+      "manage_drugs",
+      "manage_preparations",
+      "manage_users",
+      "view_audit_logs",
+    ]);
+    database
+      .prepare(
+        "UPDATE users SET permissions = ?, display_name = ? WHERE username = 'admin'"
+      )
+      .run(allPermissions, "Administrator");
+    console.log("Migration: Updated admin user with all permissions");
   }
 }
